@@ -89,6 +89,7 @@ def SendCommand(command):
     r = requests.post(url, data=command, auth=(USER, PASS))
   except:
     return {}
+  
   return json.loads(r.text)
 
 def RPCString(method, params=None):
@@ -312,8 +313,10 @@ def GetTvShows():
   data = SendCommand(RPCString("VideoLibrary.GetTVShows"))
   return data
   
-def GetMovies():
-  data = SendCommand(RPCString("VideoLibrary.GetMovies"))
+def GetMovies(movie_name):
+  print movie_name
+  data = SendCommand(RPCString("VideoLibrary.GetMovies",{"sort": {"order": "ascending", "method": "title"}, "filter": {"operator": "contains", "field": "title", "value": movie_name}}))
+  
   return data
   
 def GetUnwatchedMovies():

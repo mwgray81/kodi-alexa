@@ -39,6 +39,8 @@ import sys
 sys.path += [os.path.dirname(__file__)]
 import kodi
 
+#from __future__ import print_function
+
 # This utility function constructs the required JSON for a full Alexa Skills Kit response
 
 RE_SHOW_WITH_PARAM = re.compile(r"(.*) \([^)]+\)$")
@@ -50,7 +52,7 @@ def sanitize_show(show_name):
   return show_name
 
 def build_alexa_response(speech = None, session_attrs = None, card = None, reprompt = None, end_session = True):
-  reply = {"version" : "1.0"}
+  """reply = {"version" : "1.0"}
   if session_attrs:
     reply['sessionAttributes'] = session_attrs
   response = {}
@@ -62,7 +64,9 @@ def build_alexa_response(speech = None, session_attrs = None, card = None, repro
     response['reprompt'] = {'outputSpeech':{'type':'PlainText','text':reprompt}}
   response['shouldEndSession'] = end_session
   reply['response'] = response
-  return json.dumps(reply)
+  return json.dumps(reply)"""
+  return build_response(session_attrs, build_speechlet_response(
+       "", speech, "", end_session))
 
 
 # Handle the CheckNewShows intent
@@ -328,7 +332,7 @@ def alexa_play_movie(slots):
   print('Trying to play the movie %s' % (heard_movie))
   sys.stdout.flush()
   
-  movies_response = kodi.GetMovies()
+  movies_response = kodi.GetMovies(kodi.remove_the(heard_movie))
   if 'result' in movies_response and 'movies' in movies_response['result']:
     movies = movies_response['result']['movies']
     
@@ -603,6 +607,94 @@ INTENTS = [
 ]
 
 
+def lambda_handler(event, context):
+    """ Route the incoming request based on type (LaunchRequest, IntentRequest,
+    etc.) The JSON body of the request is provided in the event parameter.
+    """
+    print("event.session.application.applicationId=" +
+          event['session']['application']['applicationId'])
+
+    """
+    Uncomment this if statement and populate with your skill's application ID to
+    prevent someone else from configuring a skill that sends requests to this
+    function.
+    """
+    # if (event['session']['application']['applicationId'] !=
+    #         "amzn1.echo-sdk-ams.app.[unique-value-here]"):
+    #     raise ValueError("Invalid Application ID")
+
+    if event['session']['new']:
+        on_session_started({'requestId': event['request']['requestId']},
+                           event['session'])
+
+    if event['request']['type'] == "LaunchRequest":
+        return on_launch(event['request'], event['session'])
+    elif event['request']['type'] == "IntentRequest":
+        return on_intent(event['request'], event['session'])
+    #elif event['request']['type'] == "SessionEndedRequest":
+    #    return on_session_ended(event['request'], event['session'])
+
+def on_session_started(session_started_request, session):
+    """ Called when the session starts """
+
+    print("on_session_started requestId=" + session_started_request['requestId']
+          + ", sessionId=" + session['sessionId'])
+
+def on_launch(launch_request, session):
+    """ Called when the user launches the skill without specifying what they
+    want
+    """
+
+    print("on_launch requestId=" + launch_request['requestId'] +
+          ", sessionId=" + session['sessionId'])
+    # Dispatch to your skill's launch
+    return get_welcome_response()
+
+def get_welcome_response():
+   """ If we wanted to initialize the session to have some attributes we could
+   add those here
+   """
+   session_attributes = {}
+   card_title = "Welcome"
+   speech_output = "Welcome to the Kodi Skills. " \
+                    "Please tell me your favorite color by saying, " \
+                    "my favorite color is red"
+   # If the user either does not reply to the welcome message or says something
+   # that is not understood, they will be prompted again with this text.
+   reprompt_text = "Please tell me your favorite color by saying, " \
+                   "my favorite color is red."
+   should_end_session = False
+   return build_response(session_attributes, build_speechlet_response(
+       card_title, speech_output, reprompt_text, should_end_session))
+
+def on_intent(intent_request, session):
+    """ Called when the user specifies an intent for this skill """
+
+    print("on_intent requestId=" + intent_request['requestId'] +
+          ", sessionId=" + session['sessionId'])
+
+    intent = intent_request['intent']
+    intent_name = intent_request['intent']['name']
+    intent_slots = intent_request['intent'].get('slots',{})
+
+    # Dispatch to your skill's intent handlers
+    response = None
+  
+    print('Requested intent: %s' % (intent_name))
+    sys.stdout.flush()
+
+    # Run the function associated with the intent
+    for one_intent in INTENTS:
+      if intent_name == one_intent[0]:
+        return one_intent[1](intent_slots)
+        break
+    if not response:
+      # This should not happen if your Intent Schema and your INTENTS list above are in sync.
+      return prepare_help_message()
+
+
+
+
 # Handle the requests that arrive from the Alexa Skills Kit when your app
 # is invoked.
 
@@ -690,3 +782,33 @@ def application(environ, start_response):
 """ % {'url':environ['PATH_INFO'], 'address':environ['SERVER_SIGNATURE'], 'details':details}
   start_response('404 Not Found', [('Content-type', 'text/html')])
   return [output]
+
+
+def build_speechlet_response(title, output, reprompt_text, should_end_session):
+    return {
+        'outputSpeech': {
+            'type': 'PlainText',
+            'text': output
+        },
+        'card': {
+            'type': 'Simple',
+            'title': 'SessionSpeechlet - ' + title,
+            'content': 'SessionSpeechlet - ' + output
+        },
+        'reprompt': {
+            'outputSpeech': {
+                'type': 'PlainText',
+                'text': reprompt_text
+            }
+        },
+        'shouldEndSession': should_end_session
+    }
+
+
+def build_response(session_attributes, speechlet_response):
+    return {
+        'version': '1.0',
+        'sessionAttributes': session_attributes,
+        'response': speechlet_response
+    }
+
